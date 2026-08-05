@@ -39,8 +39,9 @@ st.markdown(
 1. **Hugging Face Data** — connect a Hub dataset repo; cache files to disk
 2. **Upload Data** — optional local/Anomark CSV upload or path (`/data`)
 3. **Explore** — plot axes (preview for Hub sources), set window size
-4. **Train** — stream windows from Hub cache or in-memory sample; custom or HF models
-5. **Analyze** — run the checkpoint and export predictions
+4. **Behavior Profiles** — compare accelerometer shapes across annotated behaviors
+5. **Train** — stream windows from Hub cache or in-memory sample; custom or HF models
+6. **Analyze** — run the checkpoint and export predictions
 
 ### Expected CSV columns
 `timestamp`, `x`, `y`, `z`, and optionally `label` for supervised training.
