@@ -6,6 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     ACCEL_DATA_DIR=/data \
     ACCEL_ARTIFACTS_DIR=/artifacts \
     HF_HOME=/artifacts/hf_cache \
+    HF_HUB_CACHE=/artifacts/hf_cache/hub \
     TRANSFORMERS_CACHE=/artifacts/hf_cache
 
 WORKDIR /app

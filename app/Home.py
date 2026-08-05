@@ -22,9 +22,10 @@ st.set_page_config(
 
 st.title("Accelerometer Explorer")
 st.write(
-    "Upload or point to accelerometer CSV data, explore signals, then train "
-    "**custom PyTorch** models or fine-tune **Hugging Face** encoders for "
-    "activity recognition and anomaly scoring."
+    "Connect a **Hugging Face dataset** (recommended for large open corpora), "
+    "or upload / path-load CSV data. Explore signals, then train **custom PyTorch** "
+    "models or fine-tune **Hugging Face** encoders — streaming from disk cache so "
+    "~60GB files never need to fit in RAM."
 )
 
 col1, col2, col3 = st.columns(3)
@@ -35,10 +36,11 @@ col3.metric("Artifacts", str(ARTIFACTS_DIR))
 st.markdown(
     """
 ### Workflow
-1. **Upload Data** — file upload or local/Docker path (`/data`)
-2. **Explore** — plot axes, set window size
-3. **Train** — Hugging Face or custom Conv1D / LSTM / autoencoder
-4. **Analyze** — run the checkpoint and export predictions
+1. **Hugging Face Data** — connect a Hub dataset repo; cache files to disk
+2. **Upload Data** — optional local/Anomark CSV upload or path (`/data`)
+3. **Explore** — plot axes (preview for Hub sources), set window size
+4. **Train** — stream windows from Hub cache or in-memory sample; custom or HF models
+5. **Analyze** — run the checkpoint and export predictions
 
 ### Expected CSV columns
 `timestamp`, `x`, `y`, `z`, and optionally `label` for supervised training.

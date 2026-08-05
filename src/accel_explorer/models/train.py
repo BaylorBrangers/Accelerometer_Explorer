@@ -26,6 +26,8 @@ class TrainConfig:
     architecture: str | None = None
     hf_model_id: str | None = None
     label_to_idx: dict[str, int] = field(default_factory=dict)
+    # Cap batches per epoch for IterableDataset / huge Hub streams (None = full pass).
+    max_steps: int | None = None
 
 
 @dataclass
@@ -54,13 +56,14 @@ def _run_epoch_activity(
     optimizer: torch.optim.Optimizer | None,
     criterion: nn.Module,
     device: torch.device,
+    max_steps: int | None = None,
 ) -> dict[str, float]:
     train_mode = optimizer is not None
     model.train(train_mode)
     total_loss = 0.0
     correct = 0
     total = 0
-    for batch in loader:
+    for step, batch in enumerate(loader, start=1):
         x, y = batch
         x = x.to(device)
         y = y.to(device)
@@ -75,6 +78,8 @@ def _run_epoch_activity(
         preds = logits.argmax(dim=1)
         correct += int((preds == y).sum().item())
         total += int(x.size(0))
+        if max_steps is not None and step >= max_steps:
+            break
     return {
         "loss": total_loss / max(total, 1),
         "accuracy": correct / max(total, 1),
@@ -88,12 +93,13 @@ def _run_epoch_anomaly(
     optimizer: torch.optim.Optimizer | None,
     criterion: nn.Module,
     device: torch.device,
+    max_steps: int | None = None,
 ) -> dict[str, float]:
     train_mode = optimizer is not None
     model.train(train_mode)
     total_loss = 0.0
     total = 0
-    for batch in loader:
+    for step, batch in enumerate(loader, start=1):
         x = batch[0] if isinstance(batch, (list, tuple)) else batch
         x = x.to(device)
         if train_mode:
@@ -105,6 +111,8 @@ def _run_epoch_anomaly(
             optimizer.step()
         total_loss += float(loss.item()) * x.size(0)
         total += int(x.size(0))
+        if max_steps is not None and step >= max_steps:
+            break
     return {"loss": total_loss / max(total, 1)}
 
 
@@ -136,7 +144,12 @@ def train_model(
 
     for epoch in range(1, cfg.epochs + 1):
         train_metrics = run_epoch(
-            model, train_loader, optimizer=optimizer, criterion=criterion, device=device
+            model,
+            train_loader,
+            optimizer=optimizer,
+            criterion=criterion,
+            device=device,
+            max_steps=cfg.max_steps,
         )
         row: dict[str, float] = {
             "epoch": float(epoch),
@@ -145,9 +158,23 @@ def train_model(
         if "accuracy" in train_metrics:
             row["train_accuracy"] = train_metrics["accuracy"]
 
-        if val_loader is not None and len(val_loader.dataset) > 0:
+        has_val = False
+        if val_loader is not None:
+            dataset = getattr(val_loader, "dataset", None)
+            try:
+                has_val = dataset is not None and len(dataset) > 0  # type: ignore[arg-type]
+            except TypeError:
+                # IterableDataset has no __len__
+                has_val = True
+
+        if has_val:
             val_metrics = run_epoch(
-                model, val_loader, optimizer=None, criterion=criterion, device=device
+                model,
+                val_loader,
+                optimizer=None,
+                criterion=criterion,
+                device=device,
+                max_steps=cfg.max_steps,
             )
             row["val_loss"] = val_metrics["loss"]
             if "accuracy" in val_metrics:

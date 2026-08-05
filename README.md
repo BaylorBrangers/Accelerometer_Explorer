@@ -4,12 +4,35 @@ Explore, label, and analyze accelerometer signals. Train **custom PyTorch** mode
 
 ## Features
 
-- Upload CSV files or load from a local / container path
+- **Hugging Face Hub datasets** — connect an open data repo; files cache to disk (~60GB OK)
+- **Streaming training** — windows are read line-by-line from cache; full CSVs are never loaded into RAM
+- Upload CSV files or load from a local / container path (Anomark weardata supported)
 - Explore axes and magnitude with interactive Plotly charts
-- Sliding-window preparation for neural training
-- Train path: **Hugging Face** Hub models or **custom PyTorch** architectures
+- Train path: **Hugging Face** encoders or **custom PyTorch** architectures
 - Analyze checkpoints and export prediction CSVs
-- Docker image with `/data` and `/artifacts` volume mounts
+- Docker image with `/data` and `/artifacts` volume mounts (HF cache under artifacts)
+
+## Hugging Face open data (large corpora)
+
+For multi‑GB / ~60GB datasets, use the **Hugging Face Data** page instead of uploading into the browser:
+
+1. Publish (or use) a Hub **dataset** repo with your CSV / Anomark files.
+2. In the app, enter `username/repo`, list files, select which to use.
+3. **Prepare cache** downloads once into `HF_HOME` / `artifacts/hf_cache` (disk, not RAM).
+4. **Train** streams sliding windows from those cached paths (`StreamingWindowDataset`).
+
+Auth for private repos: set `HF_TOKEN` (or paste a token in the UI). With Docker Compose:
+
+```bash
+export HF_TOKEN=hf_xxx
+docker compose up
+```
+
+Tips for open data on the Hub:
+
+- Prefer splitting into multiple files rather than one 60GB blob when possible (easier parallel cache + selection).
+- Parquet on the Hub is even better for columnar reads later; CSV/Anomark streaming is supported today.
+- Mount a large volume on `/artifacts` so the Hub cache survives container restarts.
 
 ## Expected CSV formats
 

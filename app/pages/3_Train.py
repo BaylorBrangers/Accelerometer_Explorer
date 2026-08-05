@@ -24,21 +24,34 @@ from accel_explorer.models.registry import (  # noqa: E402
 )
 from accel_explorer.models.train import TrainConfig, train_model  # noqa: E402
 from accel_explorer.preprocess import create_windows  # noqa: E402
+from accel_explorer.streaming import (  # noqa: E402
+    StreamSource,
+    discover_labels,
+    make_streaming_loader,
+)
 from session_state import (  # noqa: E402
     SESSION_CHECKPOINT_KEY,
     SESSION_STRIDE_KEY,
     SESSION_TRAIN_RESULT_KEY,
     SESSION_WINDOW_KEY,
     init_defaults,
-    require_dataframe,
+    require_trainable_source,
 )
 
 st.set_page_config(page_title="Train", layout="wide")
 init_defaults()
-df = require_dataframe()
+data_source = require_trainable_source()
 
 st.title("Train")
 st.write("Fine-tune a Hugging Face encoder or train a custom PyTorch architecture.")
+
+if data_source["type"] == "hf_hub":
+    st.success(
+        f"Streaming from Hub cache: `{data_source['repo_id']}` "
+        f"({len(data_source['local_paths'])} file(s)) — not loaded into RAM."
+    )
+else:
+    st.caption("Using in-memory dataframe from Upload Data (fine for small samples).")
 
 task = st.selectbox("Task", ["activity", "anomaly"])
 source = st.selectbox("Model source", ["custom", "huggingface"])
@@ -70,27 +83,99 @@ window_size = int(st.session_state[SESSION_WINDOW_KEY])
 stride = int(st.session_state[SESSION_STRIDE_KEY])
 st.caption(f"Using window_size={window_size}, stride={stride} from Explore.")
 
+max_steps = None
+max_windows = None
+if data_source["type"] == "hf_hub":
+    st.subheader("Streaming controls")
+    max_windows = st.number_input(
+        "Max windows per epoch (caps a pass over huge files)",
+        min_value=100,
+        max_value=10_000_000,
+        value=20_000,
+        step=1000,
+        help="For ~60GB corpora, start with a window budget instead of a full epoch scan.",
+    )
+    max_steps = st.number_input(
+        "Max optimizer steps per epoch (optional hard cap)",
+        min_value=0,
+        max_value=1_000_000,
+        value=0,
+        help="0 = no step cap beyond max windows.",
+    )
+    max_steps = int(max_steps) or None
+
 if st.button("Start training", type="primary"):
-    try:
-        X, y, meta = create_windows(df, window_size=window_size, stride=stride)
-    except ValueError as exc:
-        st.error(str(exc))
-        st.stop()
+    label_to_idx: dict[str, int] = {}
+    num_classes = None
+    train_loader = None
+    val_loader = None
 
-    if task == "activity":
-        if y is None:
-            st.error("Activity training requires a `label` column in the data.")
-            st.stop()
-        dataset = AccelerometerWindowDataset(X, y)
-        num_classes = dataset.num_classes
-        label_to_idx = dataset.label_to_idx or {}
+    if data_source["type"] == "hf_hub":
+        paths = data_source["local_paths"]
+        kind = data_source.get("kind", "auto")
+        sources = [StreamSource(path=p, kind=kind) for p in paths]
+        if task == "activity":
+            with st.spinner("Scanning labels from stream (bounded)…"):
+                label_to_idx = discover_labels(paths, kind=kind, max_rows_per_file=100_000)
+            if len(label_to_idx) < 2:
+                st.error(
+                    "Need at least 2 labels for activity training. "
+                    "Add a `label`/`behavior` column or provide annotations."
+                )
+                st.stop()
+            num_classes = len(label_to_idx)
+            st.write("Labels:", label_to_idx)
+            n_val = max(1, int(int(max_windows) * float(val_fraction))) if max_windows else None
+            n_train = int(max_windows) - n_val if max_windows and n_val else max_windows
+            train_loader = make_streaming_loader(
+                sources,
+                window_size=window_size,
+                stride=stride,
+                batch_size=int(batch_size),
+                label_to_idx=label_to_idx,
+                max_windows=n_train,
+                require_label=True,
+            )
+            val_loader = make_streaming_loader(
+                sources,
+                window_size=window_size,
+                stride=stride,
+                batch_size=int(batch_size),
+                label_to_idx=label_to_idx,
+                max_windows=n_val,
+                require_label=True,
+            )
+        else:
+            train_loader = make_streaming_loader(
+                sources,
+                window_size=window_size,
+                stride=stride,
+                batch_size=int(batch_size),
+                max_windows=int(max_windows) if max_windows else None,
+                require_label=False,
+            )
     else:
-        dataset = AccelerometerWindowDataset(X, None)
-        num_classes = None
-        label_to_idx = {}
+        df = data_source["dataframe"]
+        try:
+            X, y, meta = create_windows(df, window_size=window_size, stride=stride)
+        except ValueError as exc:
+            st.error(str(exc))
+            st.stop()
 
-    train_ds, val_ds = train_val_split(dataset, val_fraction=float(val_fraction))
-    train_loader, val_loader = make_loaders(train_ds, val_ds, batch_size=int(batch_size))
+        if task == "activity":
+            if y is None:
+                st.error("Activity training requires a `label` column in the data.")
+                st.stop()
+            dataset = AccelerometerWindowDataset(X, y)
+            num_classes = dataset.num_classes
+            label_to_idx = dataset.label_to_idx or {}
+        else:
+            dataset = AccelerometerWindowDataset(X, None)
+            num_classes = None
+            label_to_idx = {}
+
+        train_ds, val_ds = train_val_split(dataset, val_fraction=float(val_fraction))
+        train_loader, val_loader = make_loaders(train_ds, val_ds, batch_size=int(batch_size))
 
     progress = st.progress(0.0, text="Training…")
     status = st.empty()
@@ -119,6 +204,7 @@ if st.button("Start training", type="primary"):
         architecture=architecture,
         hf_model_id=hf_model_id,
         label_to_idx=label_to_idx,
+        max_steps=max_steps,
     )
 
     try:
@@ -145,6 +231,7 @@ if st.button("Start training", type="primary"):
             "source": result.source,
             "architecture": result.architecture,
             "hf_model_id": result.hf_model_id,
+            "data_source": data_source.get("type"),
         }
     )
 

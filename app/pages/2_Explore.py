@@ -27,6 +27,13 @@ df = require_dataframe()
 st.title("Explore")
 st.write("Inspect the loaded signal and configure sliding windows for training.")
 
+hf_src = st.session_state.get("data_source")
+if hf_src and hf_src.get("type") == "hf_hub":
+    st.info(
+        f"Showing a **preview** of Hub dataset `{hf_src['repo_id']}`. "
+        "Full files remain on disk in the HF cache; Train streams from those paths."
+    )
+
 c1, c2 = st.columns(2)
 window_size = c1.number_input(
     "Window size (samples)",
