@@ -9,6 +9,8 @@ from typing import BinaryIO, TextIO, Union
 import pandas as pd
 
 from accel_explorer.config import COLUMN_ALIASES
+from accel_explorer.formats.anomark import load_anomark_weardata, looks_like_anomark_weardata
+from accel_explorer.formats.annotations import apply_annotations, load_behavior_annotations
 
 PathLike = Union[str, Path]
 FileLike = Union[BinaryIO, TextIO, BytesIO, StringIO, bytes]
@@ -37,17 +39,32 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_csv(source: PathLike | FileLike, *, source_name: str | None = None) -> pd.DataFrame:
-    """Load a single CSV into a normalized DataFrame."""
+    """Load a single CSV into a normalized DataFrame (generic or Anomark weardata)."""
+    name: str
     if isinstance(source, (str, Path)):
         path = Path(source)
-        df = pd.read_csv(path)
         name = source_name or path.name
+        if looks_like_anomark_weardata(path):
+            return load_anomark_weardata(path, source_name=name)
+        df = pd.read_csv(path)
     elif isinstance(source, bytes):
-        df = pd.read_csv(BytesIO(source))
         name = source_name or "upload.csv"
+        if looks_like_anomark_weardata(source):
+            return load_anomark_weardata(source, source_name=name)
+        df = pd.read_csv(BytesIO(source))
     else:
-        df = pd.read_csv(source)
         name = source_name or getattr(source, "name", "upload.csv")
+        # Peek without consuming if possible
+        raw = source.read() if hasattr(source, "read") else None
+        if raw is None:
+            raise TypeError(f"Unsupported file-like source: {type(source)}")
+        if isinstance(raw, str):
+            raw_bytes = raw.encode("utf-8")
+        else:
+            raw_bytes = raw
+        if looks_like_anomark_weardata(raw_bytes):
+            return load_anomark_weardata(raw_bytes, source_name=Path(name).name)
+        df = pd.read_csv(BytesIO(raw_bytes))
 
     df = _normalize_columns(df)
     df = df.copy()
@@ -69,14 +86,26 @@ def load_path(path: PathLike) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
+def load_labeled_recording(
+    signal_source: PathLike | FileLike,
+    annotation_source: PathLike | FileLike,
+    *,
+    signal_name: str | None = None,
+) -> pd.DataFrame:
+    """Load accelerometer data and merge interval behavior annotations by timestamp."""
+    signal = load_csv(signal_source, source_name=signal_name)
+    annotations = load_behavior_annotations(annotation_source)
+    return apply_annotations(signal, annotations)
+
+
 def dataframe_summary(df: pd.DataFrame) -> dict:
     """Compact summary for UI preview."""
     summary = {
         "rows": int(len(df)),
         "columns": list(df.columns),
         "sources": sorted(df["source_file"].unique().tolist()) if "source_file" in df else [],
-        "has_label": "label" in df.columns,
+        "has_label": bool("label" in df.columns and df["label"].notna().any()),
     }
-    if "label" in df.columns:
-        summary["labels"] = sorted(df["label"].astype(str).unique().tolist())
+    if summary["has_label"]:
+        summary["labels"] = sorted(df["label"].dropna().astype(str).unique().tolist())
     return summary

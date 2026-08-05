@@ -11,7 +11,9 @@ Explore, label, and analyze accelerometer signals. Train **custom PyTorch** mode
 - Analyze checkpoints and export prediction CSVs
 - Docker image with `/data` and `/artifacts` volume mounts
 
-## Expected CSV format
+## Expected CSV formats
+
+### Generic
 
 | column | required | notes |
 |--------|----------|--------|
@@ -19,7 +21,28 @@ Explore, label, and analyze accelerometer signals. Train **custom PyTorch** mode
 | `x`, `y`, `z` | yes | accelerometer channels (aliases like `acc_x` accepted) |
 | `label` | for activity training | activity / class name |
 
-A synthetic sample is included at [`data/samples/sample_accel.csv`](data/samples/sample_accel.csv).
+### Anomark weardata (`*_acc_weardata.csv`)
+
+Detected automatically from the header:
+
+`RegisterAddress,TimestampMicroseconds,DataElement0`
+
+Rows carry more fields than the header lists. The loader maps:
+
+- `TimestampMicroseconds` → `timestamp` (seconds; thousand separators like `"304,607500"` are stripped)
+- first three data elements → `x`, `y`, `z` (accelerometer)
+- next triads → `gyro_*` and `aux_*` (kept for exploration)
+
+Sample: [`data/samples/sample_anomark_weardata.csv`](data/samples/sample_anomark_weardata.csv)
+
+### Behavior annotations
+
+Optional interval CSV merged by timestamp. Accepted aliases include
+`start`/`start_time`, `end`/`end_time`, and `label`/`behavior`.
+
+Upload the annotation file alongside a single weardata file in the Streamlit **Upload Data** page (or pass an annotation path in path mode).
+
+Synthetic labeled sample: [`data/samples/sample_accel.csv`](data/samples/sample_accel.csv).
 
 ## Local setup
 
