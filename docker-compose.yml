@@ -1,0 +1,17 @@
+services:
+  app:
+    build: .
+    image: accelerometer-explorer:latest
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/data
+      - ./artifacts:/artifacts
+    environment:
+      ACCEL_DATA_DIR: /data
+      ACCEL_ARTIFACTS_DIR: /artifacts
+      HF_HOME: /artifacts/hf_cache
+      HF_HUB_CACHE: /artifacts/hf_cache/hub
+      TRANSFORMERS_CACHE: /artifacts/hf_cache
+      HF_TOKEN: ${HF_TOKEN:-}
+    restart: unless-stopped

@@ -1,0 +1,3 @@
+# Keep artifacts directory in git; ignore trained outputs.
+*
+!.gitignore
