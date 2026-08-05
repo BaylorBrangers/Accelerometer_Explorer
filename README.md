@@ -8,6 +8,7 @@ Explore, label, and analyze accelerometer signals. Train **custom PyTorch** mode
 - **Streaming training** — windows are read line-by-line from cache; full CSVs are never loaded into RAM
 - Upload CSV files or load from a local / container path (Anomark weardata supported)
 - Explore axes and magnitude with interactive Plotly charts
+- **Behavior Profiles** — timeline, segment overlays, mean ± std window profiles, and channel distributions by label
 - Train path: **Hugging Face** encoders or **custom PyTorch** architectures
 - Analyze checkpoints and export prediction CSVs
 - Docker image with `/data` and `/artifacts` volume mounts (HF cache under artifacts)
@@ -83,6 +84,18 @@ streamlit run app/Home.py
 ```
 
 Open http://localhost:8501
+
+### Behavior profile plots (UI or CLI)
+
+In the app, open **Behavior Profiles** after loading labeled data (e.g. `data/samples/sample_accel.csv`).
+
+Or export interactive HTML plots from the command line:
+
+```bash
+python -m accel_explorer.viz.cli data/samples/sample_accel.csv --out artifacts/plots
+# with annotations:
+# python -m accel_explorer.viz.cli weardata.csv --annotations behaviors.csv --out artifacts/plots
+```
 
 ### Run tests
 
